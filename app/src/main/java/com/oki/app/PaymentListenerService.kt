@@ -21,37 +21,58 @@ class PaymentListenerService : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        prefs.addHistory("Servicio detenido por Android")
         speaker?.shutdown()
         speaker = null
         super.onDestroy()
     }
 
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        prefs.addHistory("Servicio conectado")
+    }
+
     override fun onListenerDisconnected() {
+        prefs.addHistory("Servicio desconectado")
         // Si Android desconecta el servicio, pedimos volver a conectarlo.
         requestRebind(ComponentName(this, PaymentListenerService::class.java))
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        if (!prefs.enabled) return
         if (sbn.packageName !in PaymentParser.MONITORED_PACKAGES) return
-        if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
 
-        val extras = sbn.notification.extras
+        val notification = sbn.notification
+        val extras = notification.extras
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
         val body = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
             ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString().orEmpty()
-        if (title.isBlank() && body.isBlank()) return
+        val isSummary = notification.flags and Notification.FLAG_GROUP_SUMMARY != 0
+        val app = sbn.packageName.substringAfterLast('.')
+        val tag = if (isSummary) "resumen $app" else app
+
+        // Todo lo que llega de una app vigilada queda anotado, para poder ver qué pasó.
+        if (!prefs.enabled) {
+            prefs.addHistory("Oki apagado [$tag]: $title | $body")
+            return
+        }
+        if (title.isBlank() && body.isBlank()) {
+            prefs.addHistory("Vacía [$tag]")
+            return
+        }
 
         // Algunas apps actualizan la misma notificación varias veces: evitamos repetir la voz.
         val key = "${sbn.packageName}|$title|$body"
         val now = System.currentTimeMillis()
-        if (key == lastKey && now - lastAt < 15_000) return
+        if (key == lastKey && now - lastAt < 5_000) {
+            prefs.addHistory("Repetida [$tag]: $title | $body")
+            return
+        }
         lastKey = key
         lastAt = now
 
         val payment = PaymentParser.parse(title, body)
         if (payment == null) {
-            prefs.addHistory("Ignorada: $title | $body")
+            prefs.addHistory("Ignorada [$tag]: $title | $body")
             return
         }
 

@@ -40,9 +40,9 @@ class OkiPrefs(context: Context) {
         sp.getString("history", "")!!.split("\n").filter { it.isNotBlank() }
 
     fun addHistory(line: String) {
-        val time = SimpleDateFormat("HH:mm", Locale.US).format(Date())
+        val time = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
         val entry = "$time  ${line.replace('\n', ' ').take(140)}"
-        val updated = (listOf(entry) + history()).take(20)
+        val updated = (listOf(entry) + history()).take(40)
         sp.edit().putString("history", updated.joinToString("\n")).apply()
     }
 }
