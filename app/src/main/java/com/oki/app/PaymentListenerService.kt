@@ -8,11 +8,14 @@ import android.service.notification.StatusBarNotification
 /** Lee las notificaciones de las apps de pago y anuncia en voz alta los pagos recibidos. */
 class PaymentListenerService : NotificationListenerService() {
 
+    companion object {
+        /** Es true mientras Android mantiene conectado este servicio. */
+        @Volatile
+        var connected = false
+    }
+
     private lateinit var prefs: OkiPrefs
     private var speaker: Speaker? = null
-
-    private var lastKey = ""
-    private var lastAt = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -21,6 +24,7 @@ class PaymentListenerService : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        connected = false
         prefs.addHistory("Servicio detenido por Android")
         speaker?.shutdown()
         speaker = null
@@ -29,10 +33,15 @@ class PaymentListenerService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        connected = true
         prefs.addHistory("Servicio conectado")
+        if (prefs.keepAlive) KeepAliveService.start(this)
+        // Si Android tuvo a Oki dormido, recupera los pagos que llegaron mientras tanto.
+        catchUp()
     }
 
     override fun onListenerDisconnected() {
+        connected = false
         prefs.addHistory("Servicio desconectado")
         // Si Android desconecta el servicio, pedimos volver a conectarlo.
         requestRebind(ComponentName(this, PaymentListenerService::class.java))
@@ -40,6 +49,25 @@ class PaymentListenerService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName !in PaymentParser.MONITORED_PACKAGES) return
+        handle(sbn, late = false)
+    }
+
+    /** Revisa las notificaciones que siguen en la barra y anuncia las que no se habían leído. */
+    private fun catchUp() {
+        val active = try {
+            activeNotifications
+        } catch (e: Exception) {
+            null
+        } ?: return
+        val limit = System.currentTimeMillis() - 15 * 60_000L
+        active
+            .filter { it.packageName in PaymentParser.MONITORED_PACKAGES && it.postTime >= limit }
+            .sortedBy { it.postTime }
+            .forEach { handle(it, late = true) }
+    }
+
+    private fun handle(sbn: StatusBarNotification, late: Boolean) {
+        if (!prefs.enabled) return
 
         val notification = sbn.notification
         val extras = notification.extras
@@ -50,25 +78,23 @@ class PaymentListenerService : NotificationListenerService() {
         val app = sbn.packageName.substringAfterLast('.')
         val tag = if (isSummary) "resumen $app" else app
 
-        // Todo lo que llega de una app vigilada queda anotado, para poder ver qué pasó.
-        if (!prefs.enabled) {
-            prefs.addHistory("Oki apagado [$tag]: $title | $body")
-            return
-        }
         if (title.isBlank() && body.isBlank()) {
-            prefs.addHistory("Vacía [$tag]")
+            if (!late) prefs.addHistory("Vacía [$tag]")
             return
         }
 
-        // Algunas apps actualizan la misma notificación varias veces: evitamos repetir la voz.
-        val key = "${sbn.packageName}|$title|$body"
-        val now = System.currentTimeMillis()
-        if (key == lastKey && now - lastAt < 5_000) {
-            prefs.addHistory("Repetida [$tag]: $title | $body")
+        // Cada notificación real tiene una identidad única (clave + hora de publicación).
+        // Así, dos pagos con el mismo monto y la misma persona cuentan como dos pagos,
+        // y una misma notificación nunca se anuncia dos veces.
+        val id = "${sbn.key}#${sbn.postTime}"
+        if (prefs.isProcessed(id)) return
+        prefs.markProcessed(id)
+
+        // Los resúmenes de grupo repiten el texto de sus pagos: se anotan pero no se leen.
+        if (isSummary) {
+            prefs.addHistory("Resumen omitido [$tag]: $title | $body")
             return
         }
-        lastKey = key
-        lastAt = now
 
         val payment = PaymentParser.parse(title, body)
         if (payment == null) {
@@ -77,7 +103,10 @@ class PaymentListenerService : NotificationListenerService() {
         }
 
         val total = prefs.addToToday(payment.amountCents)
-        prefs.addHistory("${PaymentParser.formatSoles(payment.amountCents)} — ${payment.sender ?: "sin nombre"}")
+        val recovered = if (late) " (recuperado)" else ""
+        prefs.addHistory(
+            "${PaymentParser.formatSoles(payment.amountCents)} — ${payment.sender ?: "sin nombre"}$recovered"
+        )
 
         var phrase = PaymentParser.toSpeech(payment, prefs.speakSender)
         if (prefs.speakTotal) {

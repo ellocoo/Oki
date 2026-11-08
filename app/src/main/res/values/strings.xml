@@ -3,15 +3,23 @@
     <string name="app_name">Oki</string>
     <string name="tagline">Escucha tus pagos sin sacar el teléfono</string>
     <string name="status_on">✅ Oki está escuchando tus pagos</string>
+    <string name="status_connecting">⏳ Conectando con las notificaciones…</string>
     <string name="status_off">⚠️ Falta activar el acceso a notificaciones</string>
+    <string name="battery_ok">🔋 Batería: sin restricciones</string>
+    <string name="battery_warn">⚠️ Batería: Android puede cerrar Oki. Toca el botón de abajo y elige «Permitir».</string>
     <string name="btn_access">Activar acceso a notificaciones</string>
     <string name="btn_battery">Evitar que Android cierre Oki</string>
+    <string name="btn_guide">Guía para la marca de mi teléfono</string>
     <string name="sw_enabled">Leer pagos en voz alta</string>
     <string name="sw_sender">Decir quién me pagó</string>
     <string name="sw_total">Decir cuánto llevo en el día</string>
+    <string name="sw_keepalive">Mantener Oki siempre activo</string>
     <string name="total_today">Total de hoy: %1$s</string>
     <string name="btn_test">Probar voz</string>
     <string name="history_title">Últimas notificaciones</string>
     <string name="history_empty">Aún no hay pagos detectados.</string>
     <string name="test_phrase">Has recibido 1 sol de Pepito</string>
+    <string name="keepalive_channel">Oki activo</string>
+    <string name="keepalive_title">Oki está activo</string>
+    <string name="keepalive_text">Listo para leer tus pagos en voz alta</string>
 </resources>

@@ -42,6 +42,15 @@ class PaymentParserTest {
     }
 
     @Test
+    fun plinBbvaReal() {
+        // Notificación real de BBVA Perú recibida en un teléfono.
+        val p = PaymentParser.parse("¡Recibiste un Plin! 💸", "AUGUSTO JESUS NOBLEJAS TORRES te plineó S/1 .")
+        assertNotNull(p)
+        assertEquals(100L, p!!.amountCents)
+        assertEquals("AUGUSTO JESUS NOBLEJAS TORRES", p.sender)
+    }
+
+    @Test
     fun pagoEnviado_seIgnora() {
         assertNull(PaymentParser.parse("Yape", "Yapeaste S/ 5 a Carlos"))
     }
